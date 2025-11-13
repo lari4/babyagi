@@ -758,3 +758,75 @@ system_prompt = (
 - Provides a final answer after "Answer:"
 
 ---
+
+## 8. Chat Systems
+
+### 8.1 Chat with Functions System Prompt
+
+**Purpose:** Provides a simple system prompt for a chat assistant that can call functions during conversation.
+
+**Location:** `babyagi/functionz/packs/default/function_calling_chat.py:42-44`
+
+**Used in function:** `chat_with_functions(chat_history, available_function_names)`
+
+**System Prompt:**
+```python
+chat_context = [
+    {"role": "system", "content": "You are a helpful assistant."}
+]
+```
+
+**Key Features:**
+- Simple, straightforward assistant prompt
+- Function calling via LiteLLM's tool interface
+- Two-stage process: initial response, then function execution, then final response
+- Supports maintaining chat history across multiple turns
+
+**Input Variables:**
+- `chat_history`: List of previous messages with role and content
+- `available_function_names`: List or comma-separated string of function names to make available
+
+**Workflow:**
+1. Builds chat context from history
+2. Fetches function definitions from database
+3. Calls LLM with tools parameter
+4. If functions are called, executes them
+5. Calls LLM again with function results
+6. Returns final assistant response
+
+**Expected Output:** Natural language response from the assistant, potentially incorporating function call results
+
+---
+
+## Summary
+
+This documentation covers **all AI prompts** used in the BabyAGI framework, organized into 8 thematic categories:
+
+1. **Description Generation** - Automated function documentation
+2. **Function Selection** - Choosing relevant functions for tasks
+3. **Task Planning & Breakdown** - Decomposing complex tasks
+4. **Code Generation** - Creating function implementations
+5. **API Analysis** - Identifying and documenting external APIs
+6. **Parameter Extraction** - Converting natural language to function parameters
+7. **Agent Systems** - ReAct-style reasoning agents
+8. **Chat Systems** - Conversational interfaces with function calling
+
+### Key Patterns Across Prompts:
+
+- **JSON-structured outputs** for reliable parsing
+- **Few-shot examples** to guide LLM behavior
+- **Iterative refinement** with retry loops on parse failures
+- **Context accumulation** for multi-step processes
+- **Function reuse emphasis** to leverage existing code
+- **Modular design** following microservice principles
+
+### Models Used:
+- Primary: `gpt-4o-mini` (fast, cost-effective)
+- Agent: `gpt-4-turbo` (for complex reasoning)
+- Embeddings: `text-embedding-ada-002`
+
+---
+
+**Document Version:** 1.0
+**Last Updated:** 2025
+**Framework:** BabyAGI (functionz framework)
