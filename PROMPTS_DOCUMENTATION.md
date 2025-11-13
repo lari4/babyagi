@@ -583,3 +583,130 @@ Based on the new information, extract any additional relevant API methods, endpo
 **Note:** This prompt uses recursive exploration - the agent will continue scraping additional URLs until `requires_more_info` is false.
 
 ---
+
+## 6. Parameter Extraction
+
+### 6.1 Extract Function Parameters from User Input (code_writing_functions)
+
+**Purpose:** Extracts the required parameters from user input to match a function's parameter signature.
+
+**Location:** `babyagi/functionz/packs/drafts/code_writing_functions.py:415-508`
+
+**Used in function:** `extract_function_parameters(user_input, function_name)`
+
+**Prompt:**
+```python
+prompt = f"""
+You are an expert assistant. The user wants to execute the following function:
+
+Function code:
+{function['code']}
+
+Function description:
+{function['metadata'].get('description', '')}
+
+Function parameters:
+{function['metadata'].get('input_parameters', [])}
+
+The user has provided the following input:
+"{user_input}"
+
+Your task is to extract the required parameters from the user's input and provide them in JSON format that matches the function's parameters.
+
+Provide your answer in the following JSON format:
+{{
+  "parameters": {{
+    "param1": value1,
+    "param2": value2,
+    ...
+  }}
+}}
+
+Ensure that the parameters match the function's required input parameters.
+
+Examples:
+
+Example 1:
+
+Function code:
+def add_numbers(a, b):
+    return a + b
+
+Function parameters:
+[{{"name": "a", "type": "int"}}, {{"name": "b", "type": "int"}}]
+
+User input: "Add 5 and 3"
+
+Response:
+{{
+  "parameters": {{
+    "a": 5,
+    "b": 3
+  }}
+}}
+
+Example 2:
+
+Function code:
+def greet_user(name):
+    return f"Hello, {{name}}!"
+
+Function parameters:
+[{{"name": "name", "type": "str"}}]
+
+User input: "Say hello to Alice"
+
+Response:
+{{
+  "parameters": {{
+    "name": "Alice"
+  }}
+}}
+
+Now, using the function provided and the user's input, extract the parameters and provide the JSON response.
+"""
+```
+
+**Input Variables:**
+- `user_input`: The user's natural language input
+- `function`: Dictionary containing function code, description, and parameter specifications
+
+**Expected Output:** JSON object with a `parameters` key containing a dictionary of parameter names and values
+
+---
+
+### 6.2 Generate Function Parameters (choose_or_create_function)
+
+**Purpose:** Generates appropriate parameter values for a function based on user input and function signature.
+
+**Location:** `babyagi/functionz/packs/drafts/choose_or_create_function.py:143-189`
+
+**Used in function:** `choose_or_create_function(user_input)` (Step 4)
+
+**Prompt:**
+```python
+param_prompt = f"""
+The user has provided the following input:
+\"{user_input}\"
+
+The function to execute is:
+{function_info.get('code', '')}
+
+Generate a JSON object with a single key "parameters" that contains the parameters required by the function, filled in appropriately based on the user's input.
+
+Return only the JSON object, with no additional text.
+"""
+```
+
+**System Prompt:**
+```python
+system_prompt = "You are an assistant that provides only JSON-formatted data, with no additional text."
+```
+
+**Input Variables:**
+- `user_input`: The user's request
+- `function_info`: Dictionary containing function code and metadata
+
+**Expected Output:** JSON object with `parameters` key containing function arguments as key-value pairs
+
+---
