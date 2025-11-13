@@ -710,3 +710,51 @@ system_prompt = "You are an assistant that provides only JSON-formatted data, wi
 **Expected Output:** JSON object with `parameters` key containing function arguments as key-value pairs
 
 ---
+
+## 7. Agent Systems
+
+### 7.1 ReAct Agent System Prompt
+
+**Purpose:** Provides the system prompt for a reasoning and action agent that uses chain-of-thought techniques to solve tasks using available functions.
+
+**Location:** `babyagi/functionz/packs/drafts/react_agent.py:72-81`
+
+**Used in function:** `react_agent(input_text)`
+
+**System Prompt:**
+```python
+system_prompt = (
+    "You are an AI assistant that uses a chain-of-thought reasoning process to solve tasks. "
+    "Let's think step by step to solve the following problem. "
+    "You have access to the following functions which you can use to complete the task. "
+    "Explain your reasoning in detail, including any functions you use and their outputs. "
+    "At the end of your reasoning, provide the final answer after 'Answer:'. "
+    "Before finalizing, review your reasoning for any errors or inconsistencies. "
+    "Avoid repeating function calls with the same arguments you've already tried. "
+    "Here is the history of function calls you have made so far: {{function_call_history}}"
+)
+```
+
+**Dynamic Updates:**
+- The `{{function_call_history}}` placeholder is replaced with a formatted string of previous function calls
+- Format: `"- {function_name} with arguments {arguments} produced output: {output}"`
+- Initially set to "None" if no calls have been made
+
+**Input Variables:**
+- `input_text`: The user's task or question
+- `function_call_history`: List of dictionaries containing function_name, arguments, and output
+
+**Key Features:**
+- Chain-of-thought reasoning
+- Iterative function calling (max 5 iterations)
+- Function call deduplication (prevents calling the same function with same arguments twice)
+- Self-review mechanism
+- Access to all functions in the database via tool calling
+
+**Expected Behavior:**
+- The agent iteratively reasons about the problem
+- Calls functions as needed via LiteLLM's tool calling interface
+- Accumulates reasoning and function results
+- Provides a final answer after "Answer:"
+
+---
