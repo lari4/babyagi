@@ -502,3 +502,84 @@ Provide the function details in a structured format including:
 **Expected Output:** JSON object with complete function implementation including all metadata
 
 ---
+
+## 5. API Analysis
+
+### 5.1 Determine Required External APIs
+
+**Purpose:** Analyzes a function description to identify what external APIs (including SDKs or libraries) will be needed.
+
+**Location:** `babyagi/functionz/packs/drafts/generate_function.py:176-269`
+
+**Used in function:** `determine_required_external_apis(description, intermediate_steps)`
+
+**Prompt:**
+```python
+prompt_for_apis = f"""You are an assistant analyzing function requirements.
+
+The user has provided the following function description: {description}.
+
+Identify if this function will require external APIs (including SDKs or libraries). If so, return a structured JSON with a list of external APIs, their purposes, and any relevant endpoints."""
+```
+
+**Input Variables:**
+- `description`: User's description of the function to generate
+
+**Expected Output:** JSON object with API details including name, purpose, and endpoints
+
+---
+
+### 5.2 Select Relevant URLs from Search Results
+
+**Purpose:** Evaluates search results to identify the most relevant documentation URLs for an API.
+
+**Location:** `babyagi/functionz/packs/drafts/generate_function.py:371-402`
+
+**Used in function:** `handle_api_documentation(api_name, description, intermediate_steps)`
+
+**Prompt:**
+```python
+link_selection_prompt = f"""You are given the following search results for the query "{search_query}":
+{json.dumps(search_results)}
+
+Which links seem most relevant for obtaining Python API documentation? Return them as a structured JSON list of URLs."""
+```
+
+**Input Variables:**
+- `search_query`: The search query used (e.g., "OpenAI API documentation python")
+- `search_results`: Results from SerpAPI search
+
+**Expected Output:** JSON object with `selected_urls` list containing relevant documentation URLs
+
+---
+
+### 5.3 Extract Relevant API Information from Documentation
+
+**Purpose:** Extracts relevant API methods, endpoints, and usage patterns from scraped documentation, determining if more information is needed.
+
+**Location:** `babyagi/functionz/packs/drafts/generate_function.py:438-501`
+
+**Used in function:** `handle_api_documentation(api_name, description, intermediate_steps)` (within scraping loop)
+
+**Prompt:**
+```python
+extraction_prompt = f"""The user wants to create a function described as follows: {description}.
+You have accumulated the following relevant API information so far:
+{accumulated_info}
+
+You have just scraped the following new API documentation:
+{json.dumps(scrape_result)}
+
+Based on the new information, extract any additional relevant API methods, endpoints, and usage patterns needed to implement the user's function. Indicate whether more information is required by setting 'requires_more_info' to true or false. If any other URLs should be scraped for further information, include them in the 'additional_urls' field."""
+```
+
+**Input Variables:**
+- `description`: User's function description
+- `accumulated_info`: Information extracted from previous documentation pages
+- `scrape_result`: Content scraped from the current documentation page
+
+**Expected Output:** JSON object with `relevant_info` (string), `additional_urls` (list), and `requires_more_info` (boolean)
+
+**Note:** This prompt uses recursive exploration - the agent will continue scraping additional URLs until `requires_more_info` is false.
+
+---
