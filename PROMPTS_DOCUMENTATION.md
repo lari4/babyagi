@@ -308,3 +308,197 @@ Now, analyze the context and provide the JSON response.
 **Expected Output:** JSON object with categorized imports and APIs, including documentation needs
 
 ---
+
+## 4. Code Generation
+
+### 4.1 Generate Function Code from Specification
+
+**Purpose:** Generates complete, working Python function code based on a function specification, using context from dependencies and similar functions.
+
+**Location:** `babyagi/functionz/packs/drafts/code_writing_functions.py:233-338`
+
+**Used in function:** `generate_function_code(function, context)`
+
+**Prompt:**
+```python
+prompt = f"""
+You are an expert Python programmer. Your task is to write detailed and working code for the following function based on the context provided. Do not provide placeholder code, but rather do your best like you are the best senior engineer in the world and provide the best code possible. DO NOT PROVIDE PLACEHOLDER CODE.
+
+Function details:
+
+Name: {function['name']}
+Description: {function['description']}
+Input parameters: {function['input_parameters']}
+Output parameters: {function['output_parameters']}
+Dependencies: {function['dependencies']}
+Imports: {function['imports']}
+
+Overall context:
+
+{context}
+
+Dependency code:
+
+{dependency_code}
+
+Code from functions with similar imports:
+
+{similar_imports_functions_code}
+
+Please provide the function details in JSON format, following this structure:
+
+{{
+  "function_name": "<function_name>",
+  "metadata": {{
+    "description": "<function_description>",
+    "input_parameters": {function['input_parameters']},
+    "output_parameters": {function['output_parameters']}
+  }},
+  "code": "<function_code_as_string>",
+  "imports": {function['imports']},
+  "dependencies": {function['dependencies']},
+  "key_dependencies": [],
+  "triggers": []
+}}
+
+**Example JSON Output:**
+
+{{
+  "function_name": "example_function",
+  "metadata": {{
+    "description": "An example function.",
+    "input_parameters": [{{"name": "param1", "type": "str"}}],
+    "output_parameters": [{{"name": "result", "type": "str"}}]
+  }},
+  "code": "<complete function code goes here>",
+  "imports": ["os"],
+  "dependencies": [],
+  "key_dependencies": [],
+  "triggers": []
+}}
+
+Provide the JSON output only, without any additional text. Do not provide placeholder code, but write complete code that is ready to run and provide the expected output.
+
+Now, please provide the JSON output for the function '{function['name']}'.
+"""
+```
+
+**Input Variables:**
+- `function`: Dictionary with function specification (name, description, parameters, dependencies, imports)
+- `context`: Overall context about the task
+- `dependency_code`: Code of functions this function depends on
+- `similar_imports_functions_code`: Code of other functions using similar imports
+
+**Expected Output:** JSON object with complete function implementation ready to execute
+
+---
+
+### 4.2 Framework System Prompt (Used across generate_function.py)
+
+**Purpose:** Provides consistent guidelines for code generation adhering to the functionz framework.
+
+**Location:** `babyagi/functionz/packs/drafts/generate_function.py` (used in multiple functions)
+
+**System Prompt:**
+```python
+system_prompt = """
+You are an AI designed to help developers write Python functions using the functionz framework. Every function you generate must adhere to the following rules:
+
+Function Registration: All functions must be registered with the functionz framework using the @babyagi.register_function() decorator. Each function can include metadata, dependencies, imports, and key dependencies.
+
+Basic Function Registration Example:
+
+def function_name(param1, param2):
+    # function logic here
+    return result
+
+Metadata and Dependencies: When writing functions, you may include optional metadata (such as descriptions) and dependencies. Dependencies can be other functions or secrets (API keys, etc.).
+
+Import Handling: Manage imports by specifying them in the decorator as dictionaries with 'name' and 'lib' keys. Include these imports within the function body.
+
+Secret Management: When using API keys or authentication secrets, reference the stored key with globals()['key_name'].
+
+Error Handling: Functions should handle errors gracefully, catching exceptions if necessary.
+
+General Guidelines: Use simple, clean, and readable code. Follow the structure and syntax of the functionz framework. Ensure proper function documentation via metadata.
+"""
+```
+
+**Usage:** This system prompt is used across multiple functions in `generate_function.py` to maintain consistency in code generation
+
+---
+
+### 4.3 Analyze Internal Functions for Reuse
+
+**Purpose:** Analyzes existing functions to identify which can be reused directly and which should be used as references.
+
+**Location:** `babyagi/functionz/packs/drafts/generate_function.py:33-136`
+
+**Used in function:** `analyze_internal_functions(description, existing_functions, intermediate_steps)`
+
+**Prompt:**
+```python
+display_prompt = f"""You are an assistant helping a developer build a function using the functionz framework.
+
+The user has provided the following function description: {description}
+
+The current available functions are listed below. Please specify if any of these functions can be used directly (for reuse), or if any should be referenced while building the new function. Return your response as structured JSON.
+
+Available Functions:
+{existing_functions}
+"""
+```
+
+**Input Variables:**
+- `description`: User's description of the function to generate
+- `existing_functions`: List of all available functions in the system
+
+**Expected Output:** JSON object with `reusable_functions` (list) and `reference_functions` (list)
+
+---
+
+### 4.4 Generate Final Function Code with Full Context
+
+**Purpose:** Generates complete function code using all gathered information including reusable functions, reference functions, and API contexts.
+
+**Location:** `babyagi/functionz/packs/drafts/generate_function.py:509-680`
+
+**Used in function:** `generate_final_function_code(description, reusable_function_code, reference_function_code, api_contexts, intermediate_steps)`
+
+**Prompt:**
+```python
+final_prompt = f"""{system_prompt}
+
+The user wants to create a function with the following description: {description}.
+
+You have the following internal reusable functions:
+{json.dumps(reusable_function_code)}
+
+You have the following internal reference functions:
+{json.dumps(reference_function_code)}
+
+You have the following context on the necessary external APIs and their usage:
+{json.dumps(api_contexts)}
+
+Generate a complete function using the functionz framework that adheres to the provided guidelines and utilizes the specified internal and external functions. Ensure the function is registered with the correct metadata, dependencies, and includes all relevant imports.
+
+Provide the function details in a structured format including:
+1. Function name
+2. Complete function code (do not the @babyagi.register_function decorator)
+3. Metadata (description)
+4. Imports
+5. Dependencies
+6. Key dependencies
+7. Triggers (if any)
+"""
+```
+
+**Input Variables:**
+- `description`: User's function description
+- `reusable_function_code`: Code of functions that can be reused
+- `reference_function_code`: Code of functions to use as reference
+- `api_contexts`: Documentation and usage information for external APIs
+
+**Expected Output:** JSON object with complete function implementation including all metadata
+
+---
