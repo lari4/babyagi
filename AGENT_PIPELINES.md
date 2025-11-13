@@ -419,3 +419,188 @@ This document describes all agent workflows, pipelines, and data flow patterns i
 - `add_function_to_database()` - Database insertion
 
 ---
+
+## 3. choose_or_create_function Pipeline
+
+**Location:** `babyagi/functionz/packs/drafts/choose_or_create_function.py:18-207`
+
+**Purpose:** Unified pipeline that decides whether to use an existing function or generate a new one, then executes it with generated parameters.
+
+### Pipeline Flow
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                  choose_or_create_function                       │
+│                                                                  │
+│  Input: user_input (string)                                     │
+│  Output: {                                                       │
+│    "intermediate_steps": [...],                                 │
+│    "execution_result": any                                      │
+│  }                                                               │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ STEP 1: Fetch Existing Functions                                │
+│                                                                  │
+│ Function: display_functions_wrapper()                           │
+│                                                                  │
+│ Actions:                                                         │
+│   - Get all functions from database                             │
+│   - Log to intermediate_steps                                   │
+│                                                                  │
+│ Output: existing_functions (list)                               │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ STEP 2: Decide - Use Existing or Create New                     │
+│                                                                  │
+│ LLM Call with FunctionDecision Pydantic model                   │
+│                                                                  │
+│ System Prompt:                                                   │
+│   "You are an assistant that helps decide whether an existing   │
+│    function can fulfill a user's request or if a new function   │
+│    needs to be created."                                        │
+│                                                                  │
+│ User Prompt:                                                     │
+│   User input: {user_input}                                      │
+│   Available Functions: {existing_functions}                     │
+│                                                                  │
+│ Output (JSON):                                                   │
+│   {                                                              │
+│     "use_existing_function": boolean,                           │
+│     "function_name": string (if using existing),                │
+│     "function_description": string (if creating new)            │
+│   }                                                              │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+              ┌────┴────┐
+              │ Branch  │
+              └────┬────┘
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+        ▼ use_existing=true   ▼ use_existing=false
+┌───────────────────┐  ┌──────────────────────────────────────────┐
+│ Use Existing      │  │ STEP 2b: Generate New Function          │
+│                   │  │                                          │
+│ function_name =   │  │ Call: generate_function_from_description(│
+│ decision.name     │  │         function_description)            │
+│                   │  │                                          │
+└─────────┬─────────┘  │ This triggers the complete 7-step        │
+          │            │ generate_function_from_description        │
+          │            │ pipeline (see Pipeline #2)                │
+          │            │                                          │
+          │            │ Output:                                   │
+          │            │   - Function created in database          │
+          │            │   - intermediate_steps appended           │
+          │            │                                          │
+          │            │ Extract function_name from:               │
+          │            │   - gen_result["function_name"], or       │
+          │            │   - Parse from gen_result["final_code"]   │
+          │            │     using regex: def\s+([a-zA-Z_]...)    │
+          │            └──────────────────┬───────────────────────┘
+          │                               │
+          └───────────────┬───────────────┘
+                          │
+                          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ STEP 3: Get Function Info                                       │
+│                                                                  │
+│ Function: get_function_wrapper(function_name)                   │
+│                                                                  │
+│ Actions:                                                         │
+│   - Retrieve function details from database                     │
+│   - Get code, metadata, parameters                              │
+│                                                                  │
+│ Output: function_info dict                                      │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ STEP 4: Generate Function Parameters                            │
+│                                                                  │
+│ LLM Call with FunctionParameters Pydantic model                 │
+│                                                                  │
+│ System Prompt:                                                   │
+│   "You are an assistant that provides only JSON-formatted data, │
+│    with no additional text."                                    │
+│                                                                  │
+│ User Prompt:                                                     │
+│   User input: {user_input}                                      │
+│   Function code: {function_info['code']}                        │
+│   Generate parameters as JSON with "parameters" key             │
+│                                                                  │
+│ Output (JSON):                                                   │
+│   {                                                              │
+│     "parameters": {                                             │
+│       "param1": value1,                                         │
+│       "param2": value2,                                         │
+│       ...                                                        │
+│     }                                                            │
+│   }                                                              │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ STEP 5: Execute Function                                        │
+│                                                                  │
+│ Function: execute_function_wrapper(function_name, **parameters) │
+│                                                                  │
+│ Actions:                                                         │
+│   - Execute function with generated parameters                  │
+│   - Handle any execution errors                                 │
+│   - Log result to intermediate_steps                            │
+│                                                                  │
+│ Output: execution_result (function return value)                │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+              ┌─────────┐
+              │ Return  │
+              │ Results │
+              └─────────┘
+```
+
+### Data Flow Summary
+
+1. **Input:** User's natural language request
+2. **Fetch Context:** Get all available functions
+3. **Decision:** LLM decides whether to use existing or create new
+4. **Branch:**
+   - **Use Existing:** Get function name from decision
+   - **Create New:** Run full `generate_function_from_description` pipeline
+5. **Get Function:** Retrieve function details from database
+6. **Generate Parameters:** LLM converts user input to function parameters
+7. **Execute:** Run function with parameters
+8. **Output:** Execution result and intermediate steps
+
+### Key Differences from process_user_input
+
+| Feature | choose_or_create_function | process_user_input |
+|---------|--------------------------|-------------------|
+| **Decision Making** | Single LLM call | Structured check |
+| **New Function Generation** | Calls `generate_function_from_description` | Calls `break_down_task` + `generate_functions` |
+| **Code Generation Approach** | Advanced (API docs, scraping) | Simpler (context-based) |
+| **Complexity** | Higher (7-step sub-pipeline) | Lower (inline generation) |
+| **Best For** | Production use, complex APIs | Quick prototyping |
+
+### Key Features
+
+- **Unified Decision Point:** Single LLM call determines path
+- **Reuses Advanced Pipeline:** Leverages `generate_function_from_description` for high-quality code
+- **Name Extraction Fallback:** Uses regex if function name not in response
+- **End-to-End Execution:** Goes from request to result
+
+### Key Functions Called
+
+- `display_functions_wrapper()` - Fetch all functions
+- LLM with `FunctionDecision` model - Decision making
+- `generate_function_from_description()` - New function generation (if needed)
+- `get_function_wrapper()` - Function retrieval
+- LLM with `FunctionParameters` model - Parameter generation
+- `execute_function_wrapper()` - Function execution
+
+---
