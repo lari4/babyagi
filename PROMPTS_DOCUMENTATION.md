@@ -172,3 +172,139 @@ Available Functions:
 **Expected Output:** JSON object with `use_existing_function` (boolean), `function_name` (optional string), and `function_description` (optional string)
 
 ---
+
+## 3. Task Planning & Breakdown
+
+### 3.1 Break Down Task into Smaller Functions
+
+**Purpose:** Decomposes a complex user task into smaller, reusable functions following a microservice-inspired architecture.
+
+**Location:** `babyagi/functionz/packs/drafts/code_writing_functions.py:77-148`
+
+**Used in function:** `break_down_task(user_input)`
+
+**Prompt:**
+```python
+prompt = f"""
+You are an expert software assistant helping to break down a user's request into smaller functions for a microservice-inspired architecture. The system is designed to be modular, with each function being small and designed optimally for potential future reuse.
+
+When breaking down the task, consider the following:
+
+- Each function should be as small as possible and do one thing well.
+- Use existing functions where possible. You have access to functions such as 'gpt_call', 'find_similar_function', and others in our function database.
+- Functions can depend on each other. Use 'dependencies' to specify which functions a function relies on.
+- Functions should include appropriate 'imports' if external libraries are needed.
+- Provide the breakdown as a list of functions, where each function includes its 'name', 'description', 'input_parameters', 'output_parameters', 'dependencies', and 'code' (just a placeholder or brief description at this stage).
+- Make sure descriptions are detailed so an engineer could build it to spec.
+- Every sub function you create should be designed to be reusable by turning things into parameters, vs hardcoding them.
+
+User request:
+
+"{user_input}"
+
+Provide your answer in JSON format as a list of functions. Each function should have the following structure:
+
+{{
+  "name": "function_name",
+  "description": "Brief description of the function",
+  "input_parameters": [{{"name": "param1", "type": "type1"}}, ...],
+  "output_parameters": [{{"name": "output", "type": "type"}}, ...],
+  "dependencies": ["dependency1", "dependency2", ...],
+  "imports": ["import1", "import2", ...],
+  "code": "Placeholder or brief description"
+}}
+
+Example:
+
+[
+  {{
+      "name": "process_data",
+      "description": "Processes input data",
+      "input_parameters": [{{"name": "data", "type": "str"}}],
+      "output_parameters": [{{"name": "processed_data", "type": "str"}}],
+      "dependencies": [],
+      "imports": [],
+      "code": "Placeholder for process_data function"
+  }},
+  {{
+      "name": "analyze_data",
+      "description": "Analyzes processed data",
+      "input_parameters": [{{"name": "processed_data", "type": "str"}}],
+      "output_parameters": [{{"name": "analysis_result", "type": "str"}}],
+      "dependencies": ["process_data"],
+      "imports": [],
+      "code": "Placeholder for analyze_data function"
+  }}
+]
+
+Now, provide the breakdown for the user's request.
+"""
+```
+
+**Input Variables:**
+- `user_input`: The user's complex task description
+
+**Expected Output:** JSON array of function specifications with names, descriptions, parameters, dependencies, and imports
+
+---
+
+### 3.2 Decide Imports and External APIs
+
+**Purpose:** Determines what Python imports and external APIs are needed for a set of functions.
+
+**Location:** `babyagi/functionz/packs/drafts/code_writing_functions.py:150-218`
+
+**Used in function:** `decide_imports_and_apis(context)`
+
+**Prompt:**
+```python
+prompt = f"""
+You are an expert software assistant helping to decide what imports and external APIs are needed for a set of functions based on the context provided.
+
+Context:
+
+{context}
+
+Existing standard Python imports:
+
+{list(existing_imports)}
+
+Determine the libraries (imports) and external APIs needed for these functions. Separate standard Python libraries from external libraries or APIs.
+
+Provide your answer in the following JSON format:
+
+{{
+  "standard_imports": ["import1", "import2", ...],
+  "external_imports": ["external_import1", "external_import2", ...],
+  "external_apis": ["api1", "api2", ...],
+  "documentation_needed": [
+      {{"name": "external_import1", "type": "import" or "api"}},
+      ...
+  ]
+}}
+
+Note: 'documentation_needed' should include any external imports or APIs for which documentation should be looked up.
+
+Example:
+
+{{
+  "standard_imports": ["os", "json"],
+  "external_imports": ["requests"],
+  "external_apis": ["SerpAPI"],
+  "documentation_needed": [
+      {{"name": "requests", "type": "import"}},
+      {{"name": "SerpAPI", "type": "api"}}
+  ]
+}}
+
+Now, analyze the context and provide the JSON response.
+"""
+```
+
+**Input Variables:**
+- `context`: Information about the functions being created
+- `existing_imports`: Set of imports already used in the system
+
+**Expected Output:** JSON object with categorized imports and APIs, including documentation needs
+
+---
