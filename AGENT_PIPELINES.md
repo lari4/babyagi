@@ -604,3 +604,251 @@ This document describes all agent workflows, pipelines, and data flow patterns i
 - `execute_function_wrapper()` - Function execution
 
 ---
+
+## 4. react_agent Pipeline
+
+**Location:** `babyagi/functionz/packs/drafts/react_agent.py:11-193`
+
+**Purpose:** Iterative reasoning and action agent that uses chain-of-thought to solve tasks by planning, executing functions, and reflecting on results.
+
+### Pipeline Flow
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         react_agent                              │
+│                                                                  │
+│  Input: input_text (string) - task or question                  │
+│  Output: full_response (string) - reasoning + answer            │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ INITIALIZATION                                                   │
+│                                                                  │
+│ 1. Get all available functions:                                 │
+│    - Call get_all_functions_wrapper()                           │
+│    - Extract function names                                     │
+│                                                                  │
+│ 2. Build tools array:                                           │
+│    For each function:                                            │
+│      - Call get_function_wrapper(func_name)                     │
+│      - Map Python types to JSON schema                          │
+│      - Create tool definition for LiteLLM                       │
+│                                                                  │
+│ 3. Initialize state:                                            │
+│    - function_call_history = []                                 │
+│    - iteration = 0                                              │
+│    - max_iterations = 5                                         │
+│    - full_reasoning_path = ""                                   │
+│                                                                  │
+│ 4. Set up chat context:                                         │
+│    [                                                             │
+│      {                                                           │
+│        "role": "system",                                        │
+│        "content": Chain-of-Thought System Prompt                │
+│                   (includes function_call_history)              │
+│      },                                                          │
+│      {                                                           │
+│        "role": "user",                                          │
+│        "content": input_text                                    │
+│      }                                                           │
+│    ]                                                             │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ ITERATIVE LOOP (max 5 iterations)                               │
+│                                                                  │
+│ WHILE iteration < max_iterations:                               │
+│                                                                  │
+│   ┌──────────────────────────────────────────────────────────┐ │
+│   │ STEP 1: Update System Prompt with History               │ │
+│   │                                                          │ │
+│   │ If function_call_history not empty:                     │ │
+│   │   Format history as:                                    │ │
+│   │   "- {func_name} with args {args} → {output}"          │ │
+│   │ Else:                                                    │ │
+│   │   "None"                                                 │ │
+│   │                                                          │ │
+│   │ Replace {{function_call_history}} placeholder           │ │
+│   └──────────────────┬───────────────────────────────────────┘ │
+│                      │                                          │
+│                      ▼                                          │
+│   ┌──────────────────────────────────────────────────────────┐ │
+│   │ STEP 2: Call LLM with Tools                             │ │
+│   │                                                          │ │
+│   │ litellm.completion(                                     │ │
+│   │   model="gpt-4-turbo",                                  │ │
+│   │   messages=chat_context,                                │ │
+│   │   tools=tools,                                          │ │
+│   │   tool_choice="auto",                                   │ │
+│   │   max_tokens=1500,                                      │ │
+│   │   temperature=0.7                                       │ │
+│   │ )                                                        │ │
+│   │                                                          │ │
+│   │ Output: response_message                                │ │
+│   └──────────────────┬───────────────────────────────────────┘ │
+│                      │                                          │
+│                      ▼                                          │
+│   ┌──────────────────────────────────────────────────────────┐ │
+│   │ STEP 3: Process Response                                │ │
+│   │                                                          │ │
+│   │ - Append response_message to chat_context               │ │
+│   │ - Append to full_reasoning_path                         │ │
+│   │ - Extract tool_calls from response                      │ │
+│   └──────────────────┬───────────────────────────────────────┘ │
+│                      │                                          │
+│                      ▼                                          │
+│              ┌───────┴────────┐                                 │
+│              │ tool_calls?    │                                 │
+│              └───────┬────────┘                                 │
+│                      │                                          │
+│        ┌─────────────┴─────────────┐                           │
+│        │ YES                       │ NO                        │
+│        ▼                           ▼                           │
+│   ┌────────────────────┐  ┌────────────────────────┐          │
+│   │ For each tool_call:│  │ No functions to call   │          │
+│   │                    │  │ Task complete          │          │
+│   │ STEP 4a: Check     │  │ BREAK LOOP             │          │
+│   │ Deduplication      │  └────────────────────────┘          │
+│   │                    │                                        │
+│   │ Is (func_name,     │                                        │
+│   │     args) already  │                                        │
+│   │     in history?    │                                        │
+│   │                    │                                        │
+│   │ ┌─YES────┬───NO─┐ │                                        │
+│   │ ▼        ▼       │ │                                        │
+│   │ Return   Execute │ │                                        │
+│   │ "already func via│ │                                        │
+│   │ called"  wrapper │ │                                        │
+│   │          ↓       │ │                                        │
+│   │       Add to     │ │                                        │
+│   │       history    │ │                                        │
+│   │          ↓       │ │                                        │
+│   │  Build response  │ │                                        │
+│   │  message         │ │                                        │
+│   └────────┬─────────┘ │                                        │
+│            │           │                                        │
+│            ▼           │                                        │
+│   ┌────────────────────┴───────────────────────┐              │
+│   │ STEP 4b: Append Tool Response to Context   │              │
+│   │                                             │              │
+│   │ chat_context.append({                      │              │
+│   │   "tool_call_id": id,                      │              │
+│   │   "role": "tool",                          │              │
+│   │   "name": func_name,                       │              │
+│   │   "content": response                      │              │
+│   │ })                                          │              │
+│   │                                             │              │
+│   │ Update full_reasoning_path                 │              │
+│   └─────────────────────┬───────────────────────┘              │
+│                         │                                      │
+│                         ▼                                      │
+│                   ┌──────────┐                                 │
+│                   │ CONTINUE │                                 │
+│                   │ LOOP     │                                 │
+│                   └──────────┘                                 │
+│                                                                 │
+│   iteration += 1                                               │
+│                                                                 │
+│ END WHILE                                                       │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ FINALIZATION                                                     │
+│                                                                  │
+│ 1. Extract final answer:                                        │
+│    If "Answer:" in response_message.content:                    │
+│      final_answer = text after "Answer:"                        │
+│    Else:                                                         │
+│      final_answer = entire response_message.content             │
+│                                                                  │
+│ 2. Format function calls history:                               │
+│    For each call in function_call_history:                      │
+│      "Function '{name}' called with {args}, → {output}"         │
+│                                                                  │
+│ 3. Build full response:                                         │
+│    "Full Reasoning Path:\n{full_reasoning_path}\n\n"            │
+│    "Functions Used:\n{function_calls_str}\n\n"                  │
+│    "Final Answer:\n{final_answer}"                              │
+└──────────────────┬───────────────────────────────────────────────┘
+                   │
+                   ▼
+              ┌─────────┐
+              │ Return  │
+              │ Response│
+              └─────────┘
+```
+
+### Data Flow Summary
+
+1. **Input:** Task or question in natural language
+2. **Setup:**
+   - Fetch all available functions from database
+   - Build tool definitions for LLM
+   - Initialize tracking variables
+3. **Iterative Reasoning Loop (up to 5 iterations):**
+   - **Think:** LLM reasons about the problem
+   - **Act:** LLM decides to call functions or provide answer
+   - **Observe:** Function results fed back to LLM
+   - **Reflect:** LLM incorporates results into reasoning
+4. **Deduplication:** Prevents calling same function with same args twice
+5. **Termination:** Loop ends when LLM provides answer or max iterations reached
+6. **Output:** Complete reasoning path + function calls + final answer
+
+### Key Features
+
+- **Chain-of-Thought Reasoning:** LLM explicitly explains its thinking
+- **Iterative Planning:** Can call multiple functions across iterations
+- **Function Call History:** Maintains and shares history with LLM
+- **Deduplication:** Prevents redundant function calls
+- **Self-Correction:** Can reflect on errors and try different approaches
+- **Full Transparency:** Returns complete reasoning path
+
+### Loop Termination Conditions
+
+1. **LLM decides task is complete** (no tool_calls in response)
+2. **Max iterations reached** (5 iterations)
+3. **Error occurs** (caught and returned in response)
+
+### Example Flow
+
+```
+User: "What's 5 factorial divided by 2?"
+
+Iteration 1:
+  Think: "I need to calculate 5 factorial first"
+  Act: calculate_factorial(5)
+  Observe: 120
+
+Iteration 2:
+  Think: "Now I need to divide 120 by 2"
+  Act: divide(120, 2)
+  Observe: 60
+
+Iteration 3:
+  Think: "I have the answer"
+  Act: None
+  Answer: "5 factorial divided by 2 equals 60"
+  → Loop terminates
+```
+
+### Key Functions Called
+
+- `get_all_functions_wrapper()` - Fetch available functions
+- `get_function_wrapper()` - Get function details for tool building
+- `execute_function_wrapper()` - Execute selected functions
+- `litellm.completion()` - LLM calls with tool support
+
+### Comparison with Other Pipelines
+
+| Feature | react_agent | process_user_input | choose_or_create |
+|---------|------------|-------------------|-----------------|
+| **Approach** | Iterative reasoning | One-shot execution | Decision then execute |
+| **Function Calls** | Multiple, sequential | Single | Single |
+| **Reasoning** | Explicit CoT | Implicit | Implicit |
+| **Adaptability** | High (can adjust plan) | Low | Medium |
+| **Best For** | Complex multi-step tasks | Simple tasks | Production automation |
+
+---
